@@ -59,11 +59,12 @@ def pipe_04_PCA():
 def pipe_05_search_image(query_text,top_n=6):
     TP.tic(inspect.currentframe().f_code.co_name, reset=True)
     U = utils_semantic.Semantic_proc(folder_out=folder_out, cold_start=False)
+
     filename_images = U.search_images(query_text=query_text,
                                       filename_tokens_images='./data/ex_GCC/tokens.csv',
                                       filename_tokens_words ='./data/ex_tokens_hex/tokens_english_3000.csv',top_n=top_n)
-    #filename_images = ['001794.jpg', '000835.jpg', '002015.jpg', '000748.jpg']
-    image = U.compose_thumbnails('./data/ex_GCC/', filename_images)
+    filename_out = 'thumbnails.jpg'
+    U.compose_thumbnails('./data/ex_GCC/', filename_images,filename_out)
     TP.print_duration(inspect.currentframe().f_code.co_name)
     return
 # ----------------------------------------------------------------------------------------------------------------------

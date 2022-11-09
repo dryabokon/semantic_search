@@ -218,8 +218,15 @@ class Semantic_proc:
 # ----------------------------------------------------------------------------------------------------------------------
     def compose_thumbnails(self,folder_in,filenames_images,fiename_out):
 
-        small_width,small_height = 320,240
-        tensor = [tools_image.smart_resize(cv2.imread(folder_in+filename),small_height,small_width) for filename in filenames_images]
+        small_width,small_height = 160,120
+        tensor = []
+        for filename in filenames_images:
+            if os.path.isfile(folder_in + filename):
+                image = tools_image.smart_resize(cv2.imread(folder_in + filename), small_height, small_width)
+            else:
+                image = numpy.full((small_height,small_width,3),128,dtype=numpy.uint8)
+            tensor.append(image)
+
         image = tools_tensor_view.tensor_color_4D_to_image(numpy.transpose(numpy.array(tensor), (1, 2, 3, 0)))
         cv2.imwrite(self.folder_out+fiename_out,image)
 
