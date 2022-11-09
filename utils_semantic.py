@@ -25,16 +25,19 @@ class Semantic_proc:
         self.folder_out=folder_out
         self.hex_mode = True
         self.token_size = 512
+        self.started = False
         if cold_start:
             self.cold_start()
+            self.started = True
 
         return
 # ----------------------------------------------------------------------------------------------------------------------
     def cold_start(self):
-        from transformers import CLIPProcessor, CLIPModel, CLIPTokenizerFast
-        self.tokenizer = CLIPTokenizerFast.from_pretrained(self.model_id)
-        self.model = CLIPModel.from_pretrained(self.model_id)
-        self.processor = CLIPProcessor.from_pretrained(self.model_id)
+        if not self.started:
+            from transformers import CLIPProcessor, CLIPModel, CLIPTokenizerFast
+            self.tokenizer = CLIPTokenizerFast.from_pretrained(self.model_id)
+            self.model = CLIPModel.from_pretrained(self.model_id)
+            self.processor = CLIPProcessor.from_pretrained(self.model_id)
         return
 # ----------------------------------------------------------------------------------------------------------------------
     def get_filenames(self,path_input, list_of_masks):
@@ -46,6 +49,18 @@ class Semantic_proc:
             local_filenames += res
 
         return numpy.sort(numpy.array(local_filenames))
+# ----------------------------------------------------------------------------------------------------------------------
+    def get_token(self,word):
+        self.cold_start()
+
+        inputs = self.tokenizer(word, return_tensors="pt", padding=True)
+        text_emb = self.model.get_text_features(**inputs).to(self.device).detach().numpy()
+        df = pd.DataFrame(text_emb)
+        if self.hex_mode:
+            df = tools_DF.to_hex(df)
+
+        df = pd.concat([pd.DataFrame({'words':[word]}), df], axis=1)
+        return df
 # ----------------------------------------------------------------------------------------------------------------------
     def tokenize_images(self, folder_images,batch_size=100):
 
@@ -140,6 +155,22 @@ class Semantic_proc:
 
         return
 # ----------------------------------------------------------------------------------------------------------------------
+    def compose_thumbnails(self, folder_in, filenames_images, fiename_out):
+
+        small_width, small_height = 160, 120
+        tensor = []
+        for filename in filenames_images:
+            if os.path.isfile(folder_in + filename):
+                image = tools_image.smart_resize(cv2.imread(folder_in + filename), small_height, small_width)
+            else:
+                image = numpy.full((small_height, small_width, 3), 128, dtype=numpy.uint8)
+            tensor.append(image)
+
+        image = tools_tensor_view.tensor_color_4D_to_image(numpy.transpose(numpy.array(tensor), (1, 2, 3, 0)))
+        cv2.imwrite(self.folder_out + fiename_out, image)
+
+        return
+# ----------------------------------------------------------------------------------------------------------------------
     def get_top_items(self, items, confidences, top_n=3):
         t_df = pd.DataFrame({'items':items,'conf':confidences})
         t_df = t_df.sort_values(by=t_df.columns[1], ascending=False)[:top_n]
@@ -197,13 +228,16 @@ class Semantic_proc:
         df_images = self.preprocess_tokens(filename_tokens_images)
         df_words = pd.read_csv(filename_tokens_words)
         df_words = tools_DF.apply_filter(df_words,df_words.columns[0],query_text)
+        if df_words.shape[0]!=1:
+            df_words = self.get_token(query_text)
+
         df_words = self.preprocess_tokens(df_words)
 
         if  df_words.shape[0]==1:
             row = pd.Series(df_words.iloc[0, 1:1 + self.token_size],name=query_text)
             mat = df_images.iloc[:, 1:1 + self.token_size]
 
-            df_similarity = pd.DataFrame({'P':mat.dot(row).values},index=df_images.iloc[:,0]).T
+            df_similarity = pd.DataFrame({'P':mat.dot(row.values).values},index=df_images.iloc[:,0]).T
             df_similarity['text']=query_text
             df_similarity = pd.concat([df_similarity.iloc[:,-1],df_similarity.iloc[:,:-1]],axis=1)
 
@@ -216,20 +250,3 @@ class Semantic_proc:
 
         return filenames_images
 # ----------------------------------------------------------------------------------------------------------------------
-    def compose_thumbnails(self,folder_in,filenames_images,fiename_out):
-
-        small_width,small_height = 160,120
-        tensor = []
-        for filename in filenames_images:
-            if os.path.isfile(folder_in + filename):
-                image = tools_image.smart_resize(cv2.imread(folder_in + filename), small_height, small_width)
-            else:
-                image = numpy.full((small_height,small_width,3),128,dtype=numpy.uint8)
-            tensor.append(image)
-
-        image = tools_tensor_view.tensor_color_4D_to_image(numpy.transpose(numpy.array(tensor), (1, 2, 3, 0)))
-        cv2.imwrite(self.folder_out+fiename_out,image)
-
-        return
-# ----------------------------------------------------------------------------------------------------------------------
-

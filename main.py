@@ -76,4 +76,4 @@ if __name__ == '__main__':
     #pipe_02b_tokenize_URLs_images()
     #pipe_03_image_text_similarity()
 
-    pipe_05_search_image('car',6)
+    pipe_05_search_image('car2',4)
