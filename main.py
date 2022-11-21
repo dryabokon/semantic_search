@@ -68,12 +68,22 @@ def pipe_05_search_image(query_text,top_n=6):
     TP.print_duration(inspect.currentframe().f_code.co_name)
     return
 # ----------------------------------------------------------------------------------------------------------------------
+def pipe_06(queries,limit=3):
 
+    U = utils_semantic.Semantic_proc(folder_out=folder_out, cold_start=True)
+    URLs = U.get_ULRs(queries,limit)
+    #!!!
+    URLs[0] = 'https://www.youtube.com/watch?v=g-skPkW75mQ&t=6s'
+    U.tokenize_youtube_scenes(URLs,filename_log='df_tokens_youtube.csv')
+    return
+
+# ----------------------------------------------------------------------------------------------------------------------
+
+#pipe_01_tokenize_words()
+#pipe_02a_tokenize_images()
+#pipe_02b_tokenize_URLs_images()
+#pipe_03_image_text_similarity()
+#pipe_05_search_image('car2',4)
+# ----------------------------------------------------------------------------------------------------------------------
 if __name__ == '__main__':
-
-    #pipe_01_tokenize_words()
-    #pipe_02a_tokenize_images()
-    #pipe_02b_tokenize_URLs_images()
-    #pipe_03_image_text_similarity()
-
-    pipe_05_search_image('car2',4)
+    pipe_06('cnn news')

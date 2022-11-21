@@ -7,6 +7,10 @@ from os import listdir
 import fnmatch
 import requests
 from PIL import Image
+import urllib.request
+import re
+import uuid
+from scenedetect import detect, ContentDetector
 # ----------------------------------------------------------------------------------------------------------------------
 import sys
 sys.path.insert(1, './tools/')
@@ -14,6 +18,7 @@ sys.path.insert(1, './tools/')
 import tools_DF
 import tools_image
 import tools_tensor_view
+import tools_video
 # ----------------------------------------------------------------------------------------------------------------------
 class Semantic_proc:
     def __init__(self,folder_out,cold_start=True):
@@ -62,9 +67,10 @@ class Semantic_proc:
         df = pd.concat([pd.DataFrame({'words':[word]}), df], axis=1)
         return df
 # ----------------------------------------------------------------------------------------------------------------------
-    def tokenize_images(self, folder_images,batch_size=100):
+    def tokenize_images(self, folder_images,mask='*.png,*.jpg',batch_size=100):
 
-        filenames_images = self.get_filenames(folder_images, '*.png,*.jpg')
+        filenames_images = self.get_filenames(folder_images, mask)
+        df = pd.DataFrame([])
         batch_iter = 0
         while batch_iter < len(filenames_images):
             batch_filenames = filenames_images[batch_iter:batch_iter + batch_size]
@@ -82,10 +88,10 @@ class Semantic_proc:
             else:
                 mode, header = 'a', False
 
-            df.to_csv(self.folder_out + 'tokens_%s.csv' % folder_images.split('/')[-2], index=False, float_format='%.4f', mode=mode,header=header)
+            #df.to_csv(self.folder_out + 'tokens_%s.csv' % folder_images.split('/')[-2], index=False, float_format='%.4f', mode=mode,header=header)
             batch_iter += batch_size
 
-        return
+        return df
 # ----------------------------------------------------------------------------------------------------------------------
     def tokenize_URLs_images(self,URLs,captions=None,do_save=True):
 
@@ -134,6 +140,20 @@ class Semantic_proc:
 
 
         return
+# ----------------------------------------------------------------------------------------------------------------------
+    def tokenize_video_scenes(self,filename_in, folder_out, prefix=''):
+        if not os.path.isfile(filename_in):
+            df_log = pd.DataFrame({'filename': []})
+        else:
+            scene_list = detect(filename_in, ContentDetector())
+            frame_IDs = [(scene[0].get_frames() + scene[1].get_frames()) // 2 for scene in scene_list]
+            tools_video.extract_frames_v3(filename_in, folder_out, frame_IDs=frame_IDs, prefix=prefix)
+
+
+
+            df_log = pd.DataFrame({'filename': [prefix + '%06d.jpg' % frame_ID for frame_ID in frame_IDs]})
+        return df_log
+
 # ----------------------------------------------------------------------------------------------------------------------
     def tokenize_words(self, filename_words,batch_size=50):
         words = [w for w in pd.read_csv(filename_words,header=None,sep='\t').values[:, 0]]
@@ -249,4 +269,48 @@ class Semantic_proc:
 
 
         return filenames_images
+# ----------------------------------------------------------------------------------------------------------------------
+    def tokenize_youtube_scenes(self,URLs,filename_log):
+        grab_resolution = '720p'
+        filename_tmp_video = uuid.uuid3(uuid.NAMESPACE_URL, 'delme').hex + '.mp4'
+
+        if os.path.isfile(self.folder_out + filename_log):
+            df_log = pd.read_csv(self.folder_out + filename_log)
+        else:
+            df_log = pd.DataFrame([])
+
+        for URL in URLs:
+            if (df_log.shape[0] > 0) and (URL in df_log['URL']): continue
+            prefix = uuid.uuid3(uuid.NAMESPACE_URL, URL).hex + '_'
+
+            df_log1 = tools_video.grab_youtube_video(URL, self.folder_out, filename_tmp_video,resolution=grab_resolution)
+            #df_log1.to_csv(self.folder_out + 'df_log1.csv', index=False)
+            frame_IDs = [(scene[0].get_frames() + scene[1].get_frames()) // 2 for scene in detect(self.folder_out+filename_tmp_video, ContentDetector())]
+            tools_video.extract_frames_v3(self.folder_out+filename_tmp_video, self.folder_out, frame_IDs, prefix=prefix, scale=1)
+            df_log2 = self.tokenize_images(self.folder_out,mask=prefix+'*.jpg')
+            #df_log2.to_csv(self.folder_out+'df_log2.csv',index=False)
+            df_log = df_log2.merge(df_log1, how='cross')
+
+            if os.path.isfile(self.folder_out + filename_log):
+                header,mode = False,'a'
+            else:
+                header,mode = True,'w'
+            df_log.to_csv(self.folder_out+filename_log,index=False,header=header,mode=mode)
+            tools_video.rescale_overwrite_images(self.folder_out, mask=prefix + '*.jpg', target_width=360)
+            if os.path.isfile(self.folder_out+filename_tmp_video):os.remove(self.folder_out+filename_tmp_video)
+
+            print('%d scenes %s'%(df_log2.shape[0],URL))
+        return
+# ----------------------------------------------------------------------------------------------------------------------
+    def get_ULRs(self,queries,limit=3):
+        res = []
+        if not isinstance(queries,list):
+            queries = [queries]
+
+        for query in queries:
+            query = query.replace(' ','+')
+            html = urllib.request.urlopen("https://www.youtube.com/results?search_query=%s"%query)
+            video_ids = re.findall(r"watch\?v=(\S{11})", html.read().decode())
+            res+=["https://www.youtube.com/watch?v="+x for x in video_ids[:limit]]
+        return res
 # ----------------------------------------------------------------------------------------------------------------------
